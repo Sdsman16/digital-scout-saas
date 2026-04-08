@@ -2,7 +2,9 @@
 psycopg2-binary>=2.9.9
 psycopg[c]>=2.9.9
 Flask>=3.0.0
+Flask-Login>=0.6.0
 PyYAML>=6.0
+werkzeug>=3.0.0
 
 # Testing
 pytest>=8.0.0

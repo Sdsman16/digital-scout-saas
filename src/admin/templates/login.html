@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sign In — Digital Scout</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, system-ui, sans-serif; background: #0d1117; color: #e6edf3; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 2.5rem; width: 100%; max-width: 400px; }
+    h1 { color: #58a6ff; margin-bottom: 0.25rem; font-size: 1.5rem; }
+    .subtitle { color: #8b949e; font-size: 0.85rem; margin-bottom: 2rem; }
+    .form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 1rem; }
+    label { font-size: 0.75rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; }
+    input { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #e6edf3; padding: 10px 12px; font-size: 0.9rem; width: 100%; }
+    input:focus { outline: none; border-color: #58a6ff; }
+    button { background: #238636; color: #fff; border: none; border-radius: 6px; padding: 10px 20px; cursor: pointer; font-size: 0.9rem; width: 100%; margin-top: 0.5rem; }
+    button:hover { background: #2ea043; }
+    .error { background: #f0b42922; border: 1px solid #f0b429; color: #f0b429; border-radius: 6px; padding: 8px 12px; font-size: 0.85rem; margin-bottom: 1rem; }
+    .link { text-align: center; margin-top: 1.5rem; font-size: 0.85rem; color: #8b949e; }
+    .link a { color: #58a6ff; text-decoration: none; }
+    .link a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <h1>Digital Scout</h1>
+  <p class="subtitle">Sign in to your account</p>
+
+  {% if error %}
+  <div class="error">{{ error }}</div>
+  {% endif %}
+
+  <form method="POST">
+    <div class="form-group">
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" placeholder="you@company.com" required>
+    </div>
+    <div class="form-group">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" placeholder="••••••••" required>
+    </div>
+    <button type="submit">Sign In</button>
+  </form>
+
+  <p class="link">No account? <a href="/register">Register</a></p>
+</div>
+</body>
+</html>

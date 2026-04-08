@@ -1,16 +1,24 @@
 #!/usr/bin/env python3
 """
-admin/app.py — Simple prompt management admin UI.
+admin/app.py — Digital Scout admin UI + Phase 3 auth.
 
-Flask app to view/edit prompt templates in the database.
+Flask app for:
+  - Prompt template management (admin only)
+  - Prospect management (admin only)
+  - Lead dashboard (any logged-in user)
+  - Login / Register / Logout
+
 Run: python -m src.admin.app
 """
 
 import os
 
 import psycopg2
-from flask import Flask, jsonify, request, render_template
+from flask import Flask, jsonify, request, render_template, redirect, url_for, flash
+from flask_login import LoginManager, login_required, logout_user, current_user
 
+from src.auth import load_user, verify_login, create_user
+from src.lead_store import get_dashboard_leads, get_subscriptions_for_user
 from src.prompt_registry import (
     get_all_prompts,
     get_active_prompt,
@@ -23,17 +31,124 @@ from src.prompt_registry import (
 app = Flask(__name__)
 
 
-def get_db_url():
+def _get_db_url():
     return os.environ.get("DATABASE_URL", "postgresql://localhost:5432/digital_scout")
 
 
+# ── Flask-Login setup ─────────────────────────────────────────────────────────
+
+app.secret_key = os.environ.get("FLASK_SECRET", "dev-secret-change-in-production")
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
+login_manager.login_message = "Please sign in to access Digital Scout."
+login_manager.login_message_category = "warning"
+
+
+@login_manager.user_loader
+def user_loader(user_id):
+    return load_user(user_id)
+
+
+# ── Auth routes ───────────────────────────────────────────────────────────────
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for("index"))
+
+    if request.method == "POST":
+        email = request.form.get("email", "")
+        password = request.form.get("password", "")
+        user = verify_login(email, password)
+        if user:
+            from flask_login import login_user
+            login_user(user, remember=True)
+            next_page = request.args.get("next")
+            return redirect(next_page if next_page and next_page.startswith("/") else url_for("index"))
+        return render_template("login.html", error="Invalid email or password."), 401
+
+    return render_template("login.html")
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if current_user.is_authenticated:
+        return redirect(url_for("index"))
+
+    if request.method == "POST":
+        email = request.form.get("email", "")
+        password = request.form.get("password", "")
+        company = request.form.get("company", "")
+
+        if not email or not password:
+            return render_template("register.html", error="Email and password are required."), 400
+
+        if len(password) < 8:
+            return render_template("register.html", error="Password must be at least 8 characters."), 400
+
+        try:
+            user = create_user(email, password, company)
+        except ValueError as e:
+            return render_template("register.html", error=str(e)), 400
+
+        from flask_login import login_user
+        login_user(user, remember=True)
+        return redirect(url_for("dashboard"))
+
+    return render_template("register.html")
+
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for("login"))
+
+
+# ── Protected routes ──────────────────────────────────────────────────────────
+
 @app.route("/")
+@login_required
 def index():
     prompts = get_all_prompts()
     return render_template("index.html", prompts=prompts)
 
 
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    active_state = request.args.get("state", "").strip().upper()
+    days = min(int(request.args.get("days", 7)), 30)
+    limit = min(int(request.args.get("limit", 100)), 500)
+
+    user_id = current_user.id
+
+    # Get user's subscribed states for tab rendering
+    subscribed_states = get_subscriptions_for_user(user_id)
+    available_states = ["TX", "NM", "OK", "WY", "ND", "LA"]
+    if active_state and active_state not in available_states:
+        active_state = ""
+
+    # Fetch leads filtered by state if tab selected, otherwise all subscribed states
+    if active_state:
+        from src.lead_store import get_recent_leads
+        leads = get_recent_leads(state=active_state, days=days, limit=limit)
+    else:
+        leads = get_dashboard_leads(user_id, days=days, limit=limit)
+
+    return render_template(
+        "dashboard.html",
+        leads=leads,
+        available_states=available_states,
+        active_state=active_state,
+        days=days,
+    )
+
+
 @app.route("/api/prompts", methods=["GET"])
+@login_required
 def api_list_prompts():
     state = request.args.get("state")
     prompts = get_all_prompts(state=state)
@@ -51,6 +166,7 @@ def api_list_prompts():
 
 
 @app.route("/api/prompts/<int:prompt_id>", methods=["GET"])
+@login_required
 def api_get_prompt(prompt_id):
     query = """
         SELECT id, state, template_type, version, system_prompt,
@@ -71,6 +187,7 @@ def api_get_prompt(prompt_id):
 
 
 @app.route("/api/prompts", methods=["POST"])
+@login_required
 def api_save_prompt():
     data = request.json
     p = upsert_prompt(
@@ -87,6 +204,7 @@ def api_save_prompt():
 
 
 @app.route("/api/prospects", methods=["GET"])
+@login_required
 def api_list_prospects():
     query = """
         SELECT id, name, products, counties, formations, website, tier, is_active
@@ -107,6 +225,7 @@ def api_list_prospects():
 
 
 @app.route("/api/prospects", methods=["POST"])
+@login_required
 def api_save_prospect():
     data = request.json
     query = """

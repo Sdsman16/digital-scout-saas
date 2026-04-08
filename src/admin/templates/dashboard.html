@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lead Dashboard — Digital Scout</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, system-ui, sans-serif; background: #0d1117; color: #e6edf3; padding: 0; }
+    header { background: #161b22; border-bottom: 1px solid #30363d; padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; }
+    header h1 { color: #58a6ff; font-size: 1.1rem; }
+    .header-right { display: flex; gap: 1rem; align-items: center; }
+    .header-right span { font-size: 0.85rem; color: #8b949e; }
+    .header-right a { color: #58a6ff; text-decoration: none; font-size: 0.85rem; }
+    .header-right a:hover { text-decoration: underline; }
+    .container { max-width: 1400px; margin: 0 auto; padding: 1.5rem 2rem; }
+
+    /* State filter tabs */
+    .state-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+    .state-tabs a { padding: 6px 16px; border-radius: 20px; font-size: 0.8rem; text-decoration: none; color: #8b949e; border: 1px solid #30363d; transition: all 0.15s; }
+    .state-tabs a:hover { border-color: #58a6ff; color: #58a6ff; }
+    .state-tabs a.active { background: #1f6feb22; border-color: #1f6feb; color: #58a6ff; }
+
+    /* Lead table */
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; font-size: 0.75rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.75rem 1rem; border-bottom: 1px solid #21262d; }
+    td { padding: 0.75rem 1rem; font-size: 0.85rem; border-bottom: 1px solid #21262d; vertical-align: top; }
+    tr:hover td { background: #161b22; }
+    .api { font-family: monospace; color: #79c0ff; font-size: 0.8rem; }
+    .operator { font-weight: 500; }
+    .flags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+    .tag { display: inline-block; border-radius: 4px; padding: 2px 6px; font-size: 0.7rem; font-weight: 600; }
+    .tag.hp { background: #f0b42922; border: 1px solid #f0b429; color: #f0b429; }
+    .tag.h2s { background: #da363322; border: 1px solid #da3633; color: #f85149; }
+    .tag.dir { background: #1f6feb22; border: 1px solid #1f6feb; color: #58a6ff; }
+    .tag.pre { background: #23863622; border: 1px solid #238636; color: #3fb950; }
+    .brief-toggle { color: #58a6ff; cursor: pointer; font-size: 0.8rem; }
+    .brief-toggle:hover { text-decoration: underline; }
+    .brief-content { display: none; margin-top: 6px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 0.75rem; font-size: 0.8rem; color: #c9d1d9; white-space: pre-wrap; }
+    .brief-content.open { display: block; }
+    .matched { font-size: 0.75rem; color: #8b949e; margin-top: 4px; }
+    .matched span { color: #e6edf3; }
+    .empty { text-align: center; padding: 3rem; color: #8b949e; font-size: 0.9rem; }
+    .depth { font-family: monospace; font-size: 0.8rem; color: #79c0ff; }
+    .section-header { font-size: 0.7rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.1em; margin: 1.5rem 0 0.5rem; padding-bottom: 0.25rem; border-bottom: 1px solid #21262d; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Digital Scout — Lead Dashboard</h1>
+  <div class="header-right">
+    <span>{{ current_user.email }}</span>
+    <a href="/admin">Prompts &amp; Prospects</a>
+    <a href="/logout">Sign Out</a>
+  </div>
+</header>
+
+<div class="container">
+  {# State filter tabs #}
+  <div class="state-tabs">
+    <a href="?state=" class="{{ 'active' if not active_state else '' }}">All States</a>
+    {% for state in available_states %}
+    <a href="?state={{ state }}" class="{{ 'active' if active_state == state else '' }}">{{ state }}</a>
+    {% endfor %}
+  </div>
+
+  {# Summary row #}
+  <p class="section-header">{{ leads|length }} leads in last {{ days }} days{% if active_state %} — {{ active_state }}{% endif %}</p>
+
+  {% if leads %}
+  <table>
+    <thead>
+      <tr>
+        <th>API</th>
+        <th>State</th>
+        <th>Operator</th>
+        <th>County</th>
+        <th>Formation</th>
+        <th>Depth</th>
+        <th>Spud Date</th>
+        <th>Flags</th>
+        <th>Brief</th>
+        <th>Suppliers</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for lead in leads %}
+      <tr>
+        <td class="api">{{ lead.api_number }}</td>
+        <td>{{ lead.state }}</td>
+        <td class="operator">{{ lead.operator_name or '—' }}</td>
+        <td>{{ lead.county or '—' }}</td>
+        <td>{{ lead.formation or '—' }}</td>
+        <td class="depth">{{ lead.total_depth_ft|default('—') }}</td>
+        <td>{{ lead.spud_date or '—' }}</td>
+        <td>
+          <div class="flags">
+            {% if lead.is_high_pressure %}<span class="tag hp">HP</span>{% endif %}
+            {% if lead.has_h2s_risk %}<span class="tag h2s">H2S</span>{% endif %}
+            {% if lead.is_directional %}<span class="tag dir">DIR</span>{% endif %}
+            {% if lead.is_pre_spud %}<span class="tag pre">PRE</span>{% endif %}
+          </div>
+        </td>
+        <td>
+          {% if lead.brief_text %}
+          <span class="brief-toggle" onclick="this.nextElementSibling.classList.toggle('open')">Show Brief ▼</span>
+          <div class="brief-content">{{ lead.brief_text }}</div>
+          {% else %}
+          <span style="color:#6e7681;font-size:0.75rem">No brief</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if lead.matched_prospects %}
+          <div class="matched">
+            {% for p in lead.matched_prospects[:3] %}
+            <div>🥇 {{ p.name }} ({{ p.score }}pts)</div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <span style="color:#6e7681;font-size:0.75rem">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">No leads found for your subscriptions in the last {{ days }} days.</div>
+  {% endif %}
+</div>
+</body>
+</html>

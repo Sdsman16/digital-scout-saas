@@ -196,6 +196,68 @@ def store_matches(lead_id: int, matches: list[dict]) -> int:
     return len(matches)
 
 
+# ── User / Subscription helpers ───────────────────────────────────────────────
+
+def get_user_by_email(email: str) -> dict | None:
+    """Fetch a user dict by email."""
+    query = """
+        SELECT id, email, hashed_password, company, is_admin
+        FROM users WHERE email = %s
+    """
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, (email.lower().strip(),))
+            row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def get_subscriptions_for_user(user_id: int) -> list[str]:
+    """Return list of active state subscription codes for a user."""
+    query = """
+        SELECT state FROM subscriptions
+        WHERE user_id = %s AND status = 'active'
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (user_id,))
+            return [row[0] for row in cur.fetchall()]
+
+
+def get_dashboard_leads(user_id: int, days: int = 7, limit: int = 100) -> list[dict]:
+    """
+    Fetch leads for a user's subscribed states.
+    Falls back to all states if user has no subscriptions.
+    """
+    states = get_subscriptions_for_user(user_id)
+
+    if not states:
+        # No subscriptions — show all states
+        return get_recent_leads(state=None, days=days, limit=limit)
+
+    # Build parameterized query with ANY for state filter
+    query = """
+        SELECT l.*, b.brief_text,
+               array_agg(jsonb_build_object(
+                   'name', p.name, 'tier', p.tier, 'rank', m.rank,
+                   'score', m.score))
+                   FILTER (WHERE m.id IS NOT NULL) AS matched_prospects
+        FROM leads l
+        LEFT JOIN matches m ON m.lead_id = l.id
+        LEFT JOIN prospects p ON p.id = m.prospect_id
+        LEFT JOIN briefs b ON b.lead_id = l.id
+        WHERE l.state = ANY(%s)
+          AND l.processed_at >= NOW() - INTERVAL '%s days'
+        GROUP BY l.id, b.brief_text
+        ORDER BY l.processed_at DESC
+        LIMIT %s
+    """
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, (states, days, limit))
+            rows = cur.fetchall()
+    return [dict(r) for r in rows]
+
+
 # ── Read ───────────────────────────────────────────────────────────────────────
 
 def get_lead(api_number: str, state: str) -> dict | None:
