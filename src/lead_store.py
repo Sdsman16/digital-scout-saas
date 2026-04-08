@@ -332,3 +332,131 @@ def get_correlated_leads(correlation_id: int) -> list[dict]:
             cur.execute(query, (correlation_id,))
             rows = cur.fetchall()
     return [dict(r) for r in rows]
+
+
+def get_lead_detail(api_number: str, state: str) -> dict | None:
+    """Full lead detail: lead row + brief + all matched prospects with full scores."""
+    query = """
+        SELECT l.*, b.brief_text, b.model_used, b.token_count, b.generated_at
+        FROM leads l
+        LEFT JOIN briefs b ON b.lead_id = l.id
+        WHERE l.api_number = %s AND l.state = %s
+    """
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, (api_number, state))
+            row = cur.fetchone()
+    if not row:
+        return None
+    lead = dict(row)
+
+    # Fetch all matched prospects with score breakdown
+    match_query = """
+        SELECT m.score, m.score_breakdown, m.rank,
+               p.name, p.products, p.website, p.tier
+        FROM matches m
+        JOIN prospects p ON p.id = m.prospect_id
+        WHERE m.lead_id = %s
+        ORDER BY m.rank
+    """
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(match_query, (lead["id"],))
+            lead["prospect_details"] = [dict(r) for r in cur.fetchall()]
+    return lead
+
+
+def get_recent_correlations(days: int = 7, limit: int = 50) -> list[dict]:
+    """
+    Fetch recent correlated groups from the last N days.
+    Returns correlation records with operator, week, states, lead_count.
+    """
+    query = """
+        SELECT c.*,
+               array_agg(jsonb_build_object(
+                   'api_number', l.api_number,
+                   'state', l.state,
+                   'county', l.county,
+                   'formation', l.formation,
+                   'total_depth_ft', l.total_depth_ft,
+                   'is_high_pressure', l.is_high_pressure,
+                   'has_h2s_risk', l.has_h2s_risk,
+                   'is_directional', l.is_directional,
+                   'operator_name', l.operator_name,
+                   'brief_text', b.brief_text
+               )) FILTER (WHERE l.id IS NOT NULL) AS leads
+        FROM correlations c
+        LEFT JOIN leads l ON l.correlation_id = c.id
+        LEFT JOIN briefs b ON b.lead_id = l.id
+        WHERE c.created_at >= NOW() - INTERVAL '%s days'
+        GROUP BY c.id
+        ORDER BY c.created_at DESC
+        LIMIT %s
+    """
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, (days, limit))
+            rows = cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_correlation_detail(correlation_id: int) -> dict | None:
+    """Fetch a single correlation with full lead details."""
+    query = """
+        SELECT c.*,
+               array_agg(jsonb_build_object(
+                   'api_number', l.api_number,
+                   'state', l.state,
+                   'county', l.county,
+                   'well_name', l.well_name,
+                   'formation', l.formation,
+                   'total_depth_ft', l.total_depth_ft,
+                   'is_high_pressure', l.is_high_pressure,
+                   'has_h2s_risk', l.has_h2s_risk,
+                   'is_directional', l.is_directional,
+                   'is_pre_spud', l.is_pre_spud,
+                   'operator_name', l.operator_name,
+                   'processed_at', l.processed_at,
+                   'brief_text', b.brief_text
+               )) FILTER (WHERE l.id IS NOT NULL) AS leads
+        FROM correlations c
+        LEFT JOIN leads l ON l.correlation_id = c.id
+        LEFT JOIN briefs b ON b.lead_id = l.id
+        WHERE c.id = %s
+        GROUP BY c.id
+    """
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, (correlation_id,))
+            row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def upsert_subscription(user_id: int, state: str, tier: str = "basic", status: str = "active") -> dict:
+    """
+    Insert or update a subscription for a user+state.
+    """
+    query = """
+        INSERT INTO subscriptions (user_id, state, tier, status, current_period_end)
+        VALUES (%s, %s, %s, %s, NOW() + INTERVAL '1 month')
+        ON CONFLICT (user_id, state) DO UPDATE SET
+            tier = EXCLUDED.tier,
+            status = EXCLUDED.status,
+            updated_at = NOW()
+        RETURNING id, user_id, state, tier, status, current_period_end
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (user_id, state, tier, status))
+            row = cur.fetchone()
+            conn.commit()
+    return {"id": row[0], "user_id": row[1], "state": row[2], "tier": row[3], "status": row[4], "current_period_end": row[5]}
+
+
+def delete_subscription(user_id: int, state: str) -> None:
+    """Remove a subscription."""
+    query = "DELETE FROM subscriptions WHERE user_id = %s AND state = %s"
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (user_id, state))
+            conn.commit()

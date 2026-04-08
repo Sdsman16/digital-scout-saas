@@ -124,19 +124,37 @@ def dashboard():
     limit = min(int(request.args.get("limit", 100)), 500)
 
     user_id = current_user.id
-
-    # Get user's subscribed states for tab rendering
-    subscribed_states = get_subscriptions_for_user(user_id)
     available_states = ["TX", "NM", "OK", "WY", "ND", "LA"]
     if active_state and active_state not in available_states:
         active_state = ""
 
-    # Fetch leads filtered by state if tab selected, otherwise all subscribed states
     if active_state:
         from src.lead_store import get_recent_leads
         leads = get_recent_leads(state=active_state, days=days, limit=limit)
     else:
         leads = get_dashboard_leads(user_id, days=days, limit=limit)
+
+    # Annotate is_new (processed within last 8 hrs) and days_ago
+    import datetime
+    now_ts = datetime.datetime.now(datetime.timezone.utc)
+    for lead in leads:
+        processed = lead.get("processed_at")
+        if processed:
+            if isinstance(processed, str):
+                try:
+                    processed = datetime.datetime.fromisoformat(processed.replace("Z", "+00:00"))
+                except Exception:
+                    processed = None
+            elif isinstance(processed, datetime.datetime):
+                pass
+            else:
+                processed = None
+        lead["is_new"] = False
+        lead["days_ago"] = None
+        if processed:
+            diff = (now_ts - processed).total_seconds()
+            lead["is_new"] = diff < 28800  # 8 hours
+            lead["days_ago"] = int(diff // 86400)
 
     return render_template(
         "dashboard.html",
@@ -144,7 +162,48 @@ def dashboard():
         available_states=available_states,
         active_state=active_state,
         days=days,
+        now=now_ts,
     )
+
+
+@app.route("/lead/<api_number>/<state>")
+@login_required
+def lead_detail(api_number, state):
+    from src.lead_store import get_lead_detail
+    lead = get_lead_detail(api_number, state)
+    if not lead:
+        return "Lead not found", 404
+    back_url = request.args.get("back", f"/dashboard?state={state}")
+    return render_template("lead_detail.html", lead=lead, back_url=back_url)
+
+
+@app.route("/correlated")
+@login_required
+def correlated():
+    from src.lead_store import get_recent_correlations
+    correlations = get_recent_correlations(days=7, limit=50)
+    return render_template("correlated.html", correlations=correlations)
+
+
+@app.route("/account", methods=["GET", "POST"])
+@login_required
+def account():
+    from src.lead_store import get_subscriptions_for_user, upsert_subscription, delete_subscription
+    all_states = ["TX", "NM", "OK", "WY", "ND", "LA"]
+    user_id = current_user.id
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        state = request.form.get("state", "").upper()
+        if action == "subscribe" and state in all_states:
+            upsert_subscription(user_id, state)
+        elif action == "unsubscribe" and state in all_states:
+            delete_subscription(user_id, state)
+        return redirect(url_for("account"))
+
+    subscribed = get_subscriptions_for_user(user_id)
+    subscribed_set = set(subscribed)
+    return render_template("account.html", all_states=all_states, subscribed=subscribed_set)
 
 
 @app.route("/api/prompts", methods=["GET"])

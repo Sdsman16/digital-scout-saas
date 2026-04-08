@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lead Dashboard — Digital Scout</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, system-ui, sans-serif; background: #0d1117; color: #e6edf3; }
+
+    /* ── Header ── */
+    header { background: #161b22; border-bottom: 1px solid #30363d; padding: 1rem 1.5rem; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
+    header .brand { display: flex; align-items: center; gap: 0.75rem; }
+    header h1 { color: #58a6ff; font-size: 1rem; font-weight: 600; }
+    header .badge-new { background: #238636; color: #fff; font-size: 0.65rem; padding: 2px 8px; border-radius: 10px; font-weight: 700; letter-spacing: 0.05em; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+    .header-right { display: flex; gap: 1.25rem; align-items: center; }
+    .header-right a { color: #8b949e; text-decoration: none; font-size: 0.85rem; }
+    .header-right a:hover { color: #e6edf3; }
+    .header-right a.active { color: #58a6ff; }
+
+    /* ── Layout ── */
+    .container { max-width: 1400px; margin: 0 auto; padding: 1.25rem 1.5rem; }
+
+    /* ── State filter tabs ── */
+    .state-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+    .state-tabs a { padding: 6px 14px; border-radius: 20px; font-size: 0.8rem; text-decoration: none; color: #8b949e; border: 1px solid #30363d; transition: all 0.15s; white-space: nowrap; }
+    .state-tabs a:hover { border-color: #58a6ff; color: #58a6ff; }
+    .state-tabs a.active { background: #1f6feb22; border-color: #1f6feb; color: #58a6ff; }
+    .state-tabs a .count { display: inline-block; background: #21262d; border-radius: 8px; padding: 1px 5px; font-size: 0.7rem; margin-left: 4px; }
+
+    /* ── Lead count ── */
+    .section-label { font-size: 0.7rem; color: #6e7681; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #21262d; }
+
+    /* ── Lead card grid ── */
+    .lead-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem; }
+
+    /* ── Lead card ── */
+    .lead-card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; overflow: hidden; position: relative; transition: border-color 0.15s; cursor: pointer; text-decoration: none; display: block; color: inherit; }
+    .lead-card:hover { border-color: #58a6ff; }
+    .lead-card.is-new { border-left: 3px solid #238636; }
+    .lead-card.has-h2s { border-left: 3px solid #f85149; }
+    .lead-card.has-hp { border-left: 3px solid #f0b429; }
+
+    .card-top { padding: 1rem 1rem 0.75rem; }
+    .card-top .operator { font-size: 1rem; font-weight: 600; color: #e6edf3; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .card-top .well-name { font-size: 0.8rem; color: #8b949e; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .card-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+    .state-badge { background: #21262d; border: 1px solid #30363d; color: #8b949e; border-radius: 4px; padding: 2px 8px; font-size: 0.7rem; font-weight: 600; }
+    .county-badge { color: #c9d1d9; font-size: 0.8rem; }
+
+    /* ── Risk flags ── */
+    .risk-flags { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
+    .flag { display: inline-block; border-radius: 4px; padding: 3px 8px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; }
+    .flag-hp { background: #f0b42922; border: 1px solid #f0b429; color: #f0b429; }
+    .flag-h2s { background: #f8514922; border: 1px solid #f85149; color: #f85149; }
+    .flag-dir { background: #1f6feb22; border: 1px solid #1f6feb; color: #58a6ff; }
+    .flag-pre { background: #23863622; border: 1px solid #238636; color: #3fb950; }
+    .flag-new { background: #23863622; border: 1px solid #238636; color: #3fb950; }
+
+    /* ── Card details row ── */
+    .card-details { padding: 0 1rem 0.75rem; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+    .detail-item { display: flex; flex-direction: column; gap: 1px; }
+    .detail-label { font-size: 0.65rem; color: #6e7681; text-transform: uppercase; letter-spacing: 0.05em; }
+    .detail-value { font-size: 0.8rem; color: #c9d1d9; font-family: monospace; }
+    .detail-value.depth { color: #79c0ff; }
+
+    /* ── Card footer ── */
+    .card-footer { padding: 0.75rem 1rem; border-top: 1px solid #21262d; }
+    .supplier-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+    .supplier-tier { font-size: 0.7rem; }
+    .supplier-name { font-size: 0.8rem; color: #c9d1d9; font-weight: 500; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .supplier-score { font-size: 0.7rem; color: #6e7681; }
+
+    .brief-toggle { color: #58a6ff; cursor: pointer; font-size: 0.78rem; user-select: none; }
+    .brief-toggle:hover { text-decoration: underline; }
+    .brief-content { display: none; margin-top: 6px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 0.75rem; font-size: 0.78rem; color: #c9d1d9; white-space: pre-wrap; line-height: 1.5; }
+    .brief-content.open { display: block; }
+
+    /* ── Days-ago ── */
+    .days-ago { font-size: 0.7rem; color: #6e7681; margin-top: 4px; }
+
+    /* ── Empty state ── */
+    .empty { text-align: center; padding: 4rem 2rem; color: #8b949e; }
+    .empty-icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.3; }
+    .empty p { font-size: 0.9rem; margin-bottom: 0.5rem; }
+    .empty small { font-size: 0.75rem; color: #6e7681; }
+
+    /* ── Mobile ── */
+    @media (max-width: 640px) {
+      .lead-grid { grid-template-columns: 1fr; }
+      header { padding: 0.875rem 1rem; }
+      .container { padding: 1rem; }
+      .state-tabs { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; padding-bottom: 0.5rem; }
+      .header-right { gap: 0.75rem; }
+    }
+
+    /* ── Correlated page ── */
+    .corr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 1rem; }
+    .corr-card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 1.25rem; }
+    .corr-card .operator { font-size: 1.1rem; font-weight: 600; color: #e6edf3; margin-bottom: 0.5rem; }
+    .corr-meta { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; font-size: 0.8rem; color: #8b949e; }
+    .corr-state { background: #21262d; border: 1px solid #30363d; border-radius: 4px; padding: 2px 8px; font-size: 0.75rem; font-weight: 600; color: #c9d1d9; }
+    .corr-leads { border-top: 1px solid #21262d; padding-top: 0.75rem; }
+    .corr-lead { display: flex; gap: 0.5rem; align-items: flex-start; padding: 0.5rem 0; border-bottom: 1px solid #21262d; font-size: 0.82rem; }
+    .corr-lead:last-child { border-bottom: none; }
+    .corr-lead .api { color: #79c0ff; font-family: monospace; font-size: 0.75rem; white-space: nowrap; }
+    .corr-lead .info { flex: 1; color: #c9d1d9; }
+    .corr-lead .flags { display: flex; gap: 3px; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <h1>Digital Scout</h1>
+    <a href="/dashboard" class="{{ 'active' if request.path == '/dashboard' else '' }}">Leads</a>
+    <a href="/correlated" class="{{ 'active' if request.path == '/correlated' else '' }}">Correlated</a>
+    <a href="/account" class="{{ 'active' if request.path == '/account' else '' }}">Account</a>
+  </div>
+  <div class="header-right">
+    <span style="font-size:0.8rem;color:#8b949e">{{ current_user.email }}</span>
+    <a href="/logout">Sign Out</a>
+  </div>
+</header>
+
+<div class="container">
+  {% block content %}{% endblock %}
+</div>
+
+<script>
+function toggleBrief(el) {
+  const content = el.nextElementSibling;
+  const isOpen = content.classList.contains('open');
+  content.classList.toggle('open');
+  el.textContent = isOpen ? 'Show Brief ▼' : 'Hide Brief ▲';
+}
+
+// Auto-open first brief if only one card
+document.querySelectorAll('.brief-toggle').forEach((el, i) => {
+  if (i === 0 && document.querySelectorAll('.lead-card').length === 1) {
+    el.click();
+  }
+});
+</script>
+</body>
+</html>

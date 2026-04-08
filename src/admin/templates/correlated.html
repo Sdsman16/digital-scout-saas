@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+<p class="section-label">Multi-State Operator Activity — last 7 days</p>
+
+{% if correlations %}
+<div class="corr-grid">
+  {% for corr in correlations %}
+  <div class="corr-card">
+    <div class="operator">{{ corr.operator_name }}</div>
+    <div class="corr-meta">
+      <span>Week {{ corr.year }}-W{{ "%02d"|format(corr.week_number) }}</span>
+      <span>{{ corr.lead_count }} lead{% if corr.lead_count != 1 %}s{% endif %}</span>
+    </div>
+    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:1rem;">
+      {% for st in corr.states %}
+      <span class="corr-state">{{ st }}</span>
+      {% endfor %}
+    </div>
+
+    {# ── Correlated leads ── #}
+    <div class="corr-leads">
+      {% for lead in (corr.leads or []) %}
+      <div class="corr-lead">
+        <span class="api">{{ lead.api_number }}</span>
+        <div class="info">
+          <div style="margin-bottom:2px;">
+            <span style="color:#8b949e; font-size:0.75rem;">{{ lead.county or '—' }}</span>
+            <span style="color:#6e7681; font-size:0.75rem;"> · {{ lead.formation or '—' }}</span>
+            <span style="color:#6e7681; font-size:0.75rem;"> · {% if lead.total_depth_ft %}{{ lead.total_depth_ft|int }} ft{% else %}—{% endif %}</span>
+          </div>
+          <div class="flags">
+            {% if lead.is_high_pressure %}<span class="flag flag-hp">HP</span>{% endif %}
+            {% if lead.has_h2s_risk %}<span class="flag flag-h2s">H2S</span>{% endif %}
+            {% if lead.is_directional %}<span class="flag flag-dir">DIR</span>{% endif %}
+          </div>
+          {% if lead.brief_text %}
+          <div style="margin-top:4px; font-size:0.75rem; color:#6e7681; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:280px;">{{ lead.brief_text[:120] }}…</div>
+          {% endif %}
+        </div>
+        <a href="/lead/{{ lead.api_number }}/{{ lead.state }}" style="color:#58a6ff; font-size:0.75rem; white-space:nowrap; text-decoration:none;">View →</a>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty">
+  <div class="empty-icon">🔗</div>
+  <p>No correlated activity found this week.</p>
+  <small>Correlated alerts appear when the same operator files in multiple states within the same week.</small>
+</div>
+{% endif %}
+{% endblock %}
