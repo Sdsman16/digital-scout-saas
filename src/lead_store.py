@@ -300,12 +300,44 @@ def _build_filter_clause(filter: str) -> tuple[str, list]:
         clause = "AND l.is_high_pressure = TRUE"
     elif filter == "h2s":
         clause = "AND l.has_h2s_risk = TRUE"
+    elif filter == "sour":
+        clause = "AND l.has_h2s_risk = TRUE"
+    elif filter == "co2":
+        clause = "AND l.has_h2s_risk = TRUE"
+    elif filter == "hvyt":
+        clause = "AND l.has_h2s_risk = TRUE"
+    elif filter == "snub":
+        clause = "AND l.has_h2s_risk = TRUE"
     elif filter == "dir":
         clause = "AND l.is_directional = TRUE"
     elif filter == "pre":
         clause = "AND l.is_pre_spud = TRUE"
+    elif filter == "offshore":
+        clause = "AND l.is_pre_spud = TRUE"
+    elif filter == "coalbed":
+        clause = "AND l.is_pre_spud = TRUE"
     elif filter == "deep":
         clause = "AND l.total_depth_ft >= 10000"
+    elif filter == "shallow":
+        clause = "AND l.total_depth_ft < 3000"
+    elif filter == "ultradeep":
+        clause = "AND l.total_depth_ft >= 15000"
+    elif filter == "casing":
+        clause = "AND l.is_high_pressure = TRUE"
+    elif filter == "cement":
+        clause = "AND l.is_pre_spud = TRUE"
+    elif filter == "bit":
+        clause = "AND l.total_depth_ft >= 5000"
+    elif filter == "mud":
+        clause = "AND l.total_depth_ft >= 3000"
+    elif filter == "mwd":
+        clause = "AND l.is_directional = TRUE"
+    elif filter == "fishing":
+        clause = "AND l.total_depth_ft >= 5000"
+    elif filter == "wcf":
+        clause = "AND l.is_high_pressure = TRUE OR l.has_h2s_risk = TRUE"
+    elif filter == "coiled":
+        clause = "AND l.is_pre_spud = TRUE"
     elif filter == "tier1":
         clause = "AND EXISTS (SELECT 1 FROM matches m2 JOIN prospects pr ON pr.id = m2.prospect_id WHERE m2.lead_id = l.id AND pr.tier = 1)"
     elif filter == "tier2":

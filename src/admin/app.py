@@ -141,7 +141,7 @@ def dashboard():
     else:
         leads = get_dashboard_leads(current_user.id, days=days, limit=limit, query=query, filter=active_filter)
 
-    # Annotate is_new (processed within last 8 hrs) and days_ago
+    # Annotate is_new (processed within last 8 hrs) and days_ago, tool_tags
     import datetime
     now_ts = datetime.datetime.now(datetime.timezone.utc)
     for lead in leads:
@@ -160,8 +160,9 @@ def dashboard():
         lead["days_ago"] = None
         if processed:
             diff = (now_ts - processed).total_seconds()
-            lead["is_new"] = diff < 28800  # 8 hours
+            lead["is_new"] = diff < 28800
             lead["days_ago"] = int(diff // 86400)
+        lead["tool_tags"] = _compute_tool_tags(lead)
 
     return render_template(
         "dashboard.html",
@@ -173,6 +174,60 @@ def dashboard():
         query=query,
         now=now_ts,
     )
+
+
+def _compute_tool_tags(lead: dict) -> list[str]:
+    """
+    Infer required tooling from lead attributes.
+    This is a rules-based enrichment step — tool needs derived from well characteristics.
+    """
+    tags = []
+    td = lead.get("total_depth_ft") or 0
+    is_hp = lead.get("is_high_pressure")
+    has_h2s = lead.get("has_h2s_risk")
+    is_dir = lead.get("is_directional")
+    is_pre = lead.get("is_pre_spud")
+
+    # Casing for deep, HP, or pre-spud
+    if td >= 8000 or is_hp or is_pre:
+        tags.append("Casing")
+
+    # Drill bits for depth
+    if td >= 5000:
+        tags.append("PDC Bit")
+    if td >= 10000:
+        tags.append("Tricone Bit")
+        tags.append("Mud Motor")
+
+    # Mud
+    if td >= 5000:
+        tags.append("Drill Mud")
+    if is_hp or has_h2s:
+        tags.append("H₂S Scrub Mud")
+
+    # Cementing
+    if is_pre:
+        tags.append("Cementing")
+
+    # MWD for directional
+    if is_dir:
+        tags.append("MWD")
+        tags.append(" gyroscope")
+
+    # Well control
+    if is_hp or has_h2s:
+        tags.append("BOP")
+        tags.append("Kill Fluid")
+
+    # Fishing for deep
+    if td >= 7000:
+        tags.append("Fishing")
+
+    # Snubbing for HP pre-spud
+    if is_hp and is_pre:
+        tags.append("Snubbing Unit")
+
+    return tags
 
 
 @app.route("/lead/<api_number>/<state>")
