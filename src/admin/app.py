@@ -120,19 +120,19 @@ def index():
 @login_required
 def dashboard():
     active_state = request.args.get("state", "").strip().upper()
+    query = request.args.get("q", "").strip()
     days = min(int(request.args.get("days", 7)), 30)
     limit = min(int(request.args.get("limit", 100)), 500)
 
-    user_id = current_user.id
     available_states = ["TX", "NM", "OK", "WY", "ND", "LA"]
     if active_state and active_state not in available_states:
         active_state = ""
 
     if active_state:
         from src.lead_store import get_recent_leads
-        leads = get_recent_leads(state=active_state, days=days, limit=limit)
+        leads = get_recent_leads(state=active_state, days=days, limit=limit, query=query)
     else:
-        leads = get_dashboard_leads(user_id, days=days, limit=limit)
+        leads = get_dashboard_leads(current_user.id, days=days, limit=limit, query=query)
 
     # Annotate is_new (processed within last 8 hrs) and days_ago
     import datetime
@@ -162,6 +162,7 @@ def dashboard():
         available_states=available_states,
         active_state=active_state,
         days=days,
+        query=query,
         now=now_ts,
     )
 
@@ -169,12 +170,18 @@ def dashboard():
 @app.route("/lead/<api_number>/<state>")
 @login_required
 def lead_detail(api_number, state):
-    from src.lead_store import get_lead_detail
+    from src.lead_store import get_lead_detail, get_correlated_leads
     lead = get_lead_detail(api_number, state)
     if not lead:
         return "Lead not found", 404
     back_url = request.args.get("back", f"/dashboard?state={state}")
-    return render_template("lead_detail.html", lead=lead, back_url=back_url)
+    related_leads = []
+    if lead.get("correlation_id"):
+        related_leads = [
+            r for r in get_correlated_leads(lead["correlation_id"])
+            if r["api_number"] != api_number or r["state"] != state
+        ]
+    return render_template("lead_detail.html", lead=lead, back_url=back_url, related_leads=related_leads)
 
 
 @app.route("/correlated")

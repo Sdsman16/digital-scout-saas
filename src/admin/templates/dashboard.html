@@ -1,91 +1,95 @@
 {% extends "base.html" %}
 
 {% block content %}
+
+{# ── Search bar ── #}
+<div style="max-width:700px; margin:0 auto 1.5rem; position:relative;">
+  <form method="GET" action="/dashboard" style="display:flex; gap:0.5rem;">
+    <input type="hidden" name="state" value="{{ active_state }}">
+    <input type="text"
+           name="q"
+           value="{{ query or '' }}"
+           placeholder="Search operator, county, formation, API..."
+           style="flex:1; background:#161b22; border:1px solid #30363d; border-radius:8px; color:#e6edf3; padding:12px 16px; font-size:0.95rem; outline:none;">
+    <button type="submit" style="background:#238636; color:#fff; border:none; border-radius:8px; padding:10px 20px; cursor:pointer; font-size:0.9rem; white-space:nowrap;">Search</button>
+    {% if query %}
+    <a href="/dashboard{% if active_state %}?state={{ active_state }}{% endif %}" style="background:#21262d; color:#8b949e; border:1px solid #30363d; border-radius:8px; padding:10px 14px; font-size:0.85rem; text-decoration:none; display:flex; align-items:center;">✕</a>
+    {% endif %}
+  </form>
+</div>
+
 {# ── State filter tabs ── #}
-<div class="state-tabs">
-  <a href="/dashboard" class="{{ 'active' if not active_state else '' }}">All States</a>
+<div style="display:flex; gap:0.5rem; margin-bottom:1.5rem; flex-wrap:wrap; align-items:center;">
+  <a href="/dashboard" style="padding:6px 16px; border-radius:20px; font-size:0.8rem; text-decoration:none; color:#8b949e; border:1px solid #30363d; {% if not active_state %}background:#1f6feb22; border-color:#1f6feb; color:#58a6ff;{% endif %}">All States</a>
   {% for state in available_states %}
-  <a href="/dashboard?state={{ state }}" class="{{ 'active' if active_state == state else '' }}">
-    {{ state }}
-  </a>
+  <a href="/dashboard?state={{ state }}{% if query %}&q={{ query }}{% endif %}" style="padding:6px 16px; border-radius:20px; font-size:0.8rem; text-decoration:none; color:#8b949e; border:1px solid #30363d; {% if active_state == state %}background:#1f6feb22; border-color:#1f6feb; color:#58a6ff;{% endif %}">{{ state }}</a>
   {% endfor %}
 </div>
 
-{# ── Lead count ── #}
-<p class="section-label">
-  {{ leads|length }} lead{% if leads|length != 1 %}s{% endif %} in last {{ days }} day{% if days != 1 %}s{% endif %}
-  {% if active_state %}— {{ active_state }}{% endif %}
+{# ── Results count ── #}
+<p style="font-size:0.72rem; color:#6e7681; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:1rem;">
+  {{ leads|length }} result{% if leads|length != 1 %}s{% endif %}
+  {% if active_state %}in {{ active_state }}{% endif %}
+  {% if query %}for "{{ query }}"{% endif %}
 </p>
 
-{# ── Lead cards ── #}
+{# ── Lead list ── #}
 {% if leads %}
-<div class="lead-grid">
+<div style="display:flex; flex-direction:column; gap:0.75rem;">
   {% for lead in leads %}
-  <a href="/lead/{{ lead.api_number }}/{{ lead.state }}"
-     class="lead-card {% if lead.is_new %}is-new{% endif %} {% if lead.has_h2s_risk %}has-h2s{% elif lead.is_high_pressure %}has-hp{% endif %}">
-
-    <div class="card-top">
-      <div class="operator">{{ lead.operator_name or '—' }}</div>
-      <div class="well-name">{{ lead.well_name or lead.api_number }}</div>
-      <div class="card-meta">
-        <span class="state-badge">{{ lead.state }}</span>
-        <span class="county-badge">{{ lead.county or '—' }} County</span>
+  <a href="/lead/{{ lead.api_number }}/{{ lead.state }}" style="background:#161b22; border:1px solid #30363d; border-radius:10px; padding:1rem 1.25rem; text-decoration:none; display:grid; grid-template-columns:1fr auto; gap:1rem; align-items:center; transition:border-color 0.15s;"
+     onmouseover="this.style.borderColor='#58a6ff'" onmouseout="this.style.borderColor='#30363d'">
+    <div>
+      {# ── Operator + well name ── #}
+      <div style="display:flex; align-items:baseline; gap:0.5rem; margin-bottom:4px; flex-wrap:wrap;">
+        <span style="font-size:1rem; font-weight:600; color:#e6edf3;">{{ lead.operator_name or '—' }}</span>
+        <span style="font-size:0.8rem; color:#6e7681;">{{ lead.well_name or lead.api_number }}</span>
       </div>
-      <div class="risk-flags">
-        {% if lead.is_high_pressure %}<span class="flag flag-hp">⚠ HP</span>{% endif %}
-        {% if lead.has_h2s_risk %}<span class="flag flag-h2s">⚠ H2S</span>{% endif %}
-        {% if lead.is_directional %}<span class="flag flag-dir">↗ DIR</span>{% endif %}
-        {% if lead.is_pre_spud %}<span class="flag flag-pre">PRE</span>{% endif %}
-        {% if lead.is_new %}<span class="flag flag-new">NEW</span>{% endif %}
+      {# ── Meta row ── #}
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; font-size:0.8rem; color:#8b949e;">
+        <span style="background:#21262d; border:1px solid #30363d; border-radius:4px; padding:2px 8px; font-size:0.7rem; font-weight:600;">{{ lead.state }}</span>
+        <span>{{ lead.county or '—' }} County</span>
+        <span>·</span>
+        <span>{{ lead.formation or '—' }}</span>
+        <span>·</span>
+        <span>{% if lead.total_depth_ft %}{{ lead.total_depth_ft|int }} ft{% else %}—{% endif %}</span>
+        <span>·</span>
+        <span>{{ lead.spud_date or '—' }}</span>
       </div>
+      {# ── Risk flags ── #}
+      {% if lead.is_high_pressure or lead.has_h2s_risk or lead.is_directional or lead.is_pre_spud %}
+      <div style="display:flex; gap:4px; margin-top:6px; flex-wrap:wrap;">
+        {% if lead.is_high_pressure %}<span style="background:#f0b42922; border:1px solid #f0b429; color:#f0b429; border-radius:4px; padding:2px 6px; font-size:0.68rem; font-weight:700;">⚠ HP</span>{% endif %}
+        {% if lead.has_h2s_risk %}<span style="background:#f8514922; border:1px solid #f85149; color:#f85149; border-radius:4px; padding:2px 6px; font-size:0.68rem; font-weight:700;">⚠ H2S</span>{% endif %}
+        {% if lead.is_directional %}<span style="background:#1f6feb22; border:1px solid #1f6feb; color:#58a6ff; border-radius:4px; padding:2px 6px; font-size:0.68rem; font-weight:700;">↗ DIR</span>{% endif %}
+        {% if lead.is_pre_spud %}<span style="background:#23863622; border:1px solid #238636; color:#3fb950; border-radius:4px; padding:2px 6px; font-size:0.68rem; font-weight:700;">PRE</span>{% endif %}
+      </div>
+      {% endif %}
+      {# ── Correlated indicator ── #}
+      {% if lead.correlation_id %}
+      <div style="margin-top:6px; font-size:0.72rem; color:#58a6ff;">🔗 Also active in other states</div>
+      {% endif %}
     </div>
-
-    <div class="card-details">
-      <div class="detail-item">
-        <span class="detail-label">Formation</span>
-        <span class="detail-value">{{ lead.formation or '—' }}</span>
-      </div>
-      <div class="detail-item">
-        <span class="detail-label">Depth</span>
-        <span class="detail-value depth">{% if lead.total_depth_ft %}{{ lead.total_depth_ft|int }}{% else %}—{% endif %} ft</span>
-      </div>
-      <div class="detail-item">
-        <span class="detail-label">Spud Date</span>
-        <span class="detail-value">{{ lead.spud_date or '—' }}</span>
-      </div>
-      <div class="detail-item">
-        <span class="detail-label">Days Ago</span>
-        <span class="detail-value days-ago">{% if lead.days_ago is not none %}{{ lead.days_ago }}{% else %}—{% endif %}</span>
-      </div>
-    </div>
-
-    <div class="card-footer">
-      {# ── Suppliers ── #}
+    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px; min-width:120px;">
+      {# ── Top supplier ── #}
       {% if lead.matched_prospects %}
-        {% for p in lead.matched_prospects[:2] %}
-        <div class="supplier-row">
-          <span class="supplier-tier">{{ ["🥇","🥈","🥉"][p.tier - 1] if p.tier <= 3 else "•" }}</span>
-          <span class="supplier-name">{{ p.name }}</span>
-          <span class="supplier-score">{{ p.score }}pts</span>
+        {% for p in lead.matched_prospects[:1] %}
+        <div style="text-align:right;">
+          <div style="font-size:0.78rem; color:#8b949e;">Top match</div>
+          <div style="font-size:0.85rem; color:#e6edf3; font-weight:500;">{{ p.name }}</div>
         </div>
         {% endfor %}
       {% endif %}
-
-      {# ── Brief ── #}
-      {% if lead.brief_text %}
-      <span class="brief-toggle" onclick="toggleBrief(this); event.preventDefault(); event.stopPropagation();">Show Brief ▼</span>
-      <div class="brief-content">{{ lead.brief_text }}</div>
-      {% endif %}
+      <div style="font-size:0.72rem; color:#6e7681; text-align:right;">{{ lead.api_number }}</div>
     </div>
-
   </a>
   {% endfor %}
 </div>
 {% else %}
-<div class="empty">
-  <div class="empty-icon">📡</div>
-  <p>No leads found for your subscriptions.</p>
-  <small>Check back after the next pipeline run.</small>
+<div style="text-align:center; padding:4rem 2rem; color:#8b949e;">
+  <div style="font-size:2.5rem; margin-bottom:1rem; opacity:0.3;">🔍</div>
+  <p style="font-size:0.95rem; margin-bottom:0.5rem;">No leads found</p>
+  <small style="font-size:0.8rem; color:#6e7681;">Try a different search or state filter.</small>
 </div>
 {% endif %}
 {% endblock %}

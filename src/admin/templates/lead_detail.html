@@ -145,9 +145,35 @@
   {% endif %}
 
   {# ── Pipeline metadata ── #}
-  <div style="font-size:0.75rem; color:#6e7681; text-align:right;">
-    Processed {{ lead.processed_at }} · correlation_id: {{ lead.correlation_id or 'none' }}
+  <div style="font-size:0.75rem; color:#6e7681; text-align:right; margin-bottom:1rem;">
+    Processed {{ lead.processed_at }}
   </div>
+
+  {# ── Related correlated leads (other states) ── #}
+  {% if related_leads %}
+  <div style="background:#161b22; border:1px solid #30363d; border-radius:10px; padding:1.25rem; margin-bottom:1rem;">
+    <h3 style="color:#58a6ff; font-size:0.8rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.75rem;">
+      🔗 Also Active in Other States
+    </h3>
+    <div style="display:flex; flex-direction:column; gap:0.5rem;">
+      {% for rel in related_leads %}
+      <a href="/lead/{{ rel.api_number }}/{{ rel.state }}" style="display:flex; justify-content:space-between; align-items:center; padding:0.6rem 0.75rem; background:#0d1117; border:1px solid #21262d; border-radius:6px; text-decoration:none; transition:border-color 0.15s;"
+         onmouseover="this.style.borderColor='#58a6ff'" onmouseout="this.style.borderColor='#21262d'">
+        <div>
+          <span style="font-size:0.82rem; color:#e6edf3; font-weight:500;">{{ rel.operator_name }}</span>
+          <span style="font-size:0.75rem; color:#8b949e; margin-left:6px;">{{ rel.county }} County · {{ rel.formation or '—' }}</span>
+        </div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <span style="background:#21262d; border:1px solid #30363d; border-radius:4px; padding:2px 8px; font-size:0.7rem; font-weight:600;">{{ rel.state }}</span>
+          {% if rel.is_high_pressure %}<span style="background:#f0b42922; border:1px solid #f0b429; color:#f0b429; border-radius:4px; padding:2px 6px; font-size:0.68rem; font-weight:700;">HP</span>{% endif %}
+          {% if rel.has_h2s_risk %}<span style="background:#f8514922; border:1px solid #f85149; color:#f85149; border-radius:4px; padding:2px 6px; font-size:0.68rem; font-weight:700;">H2S</span>{% endif %}
+          <span style="color:#58a6ff; font-size:0.75rem;">View →</span>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
 
 </div>
 {% endblock %}

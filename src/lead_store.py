@@ -223,19 +223,27 @@ def get_subscriptions_for_user(user_id: int) -> list[str]:
             return [row[0] for row in cur.fetchall()]
 
 
-def get_dashboard_leads(user_id: int, days: int = 7, limit: int = 100) -> list[dict]:
+def get_dashboard_leads(user_id: int, days: int = 7, limit: int = 100, query: str = "") -> list[dict]:
     """
     Fetch leads for a user's subscribed states.
     Falls back to all states if user has no subscriptions.
+    Supports free-text search across operator, county, formation, api_number.
     """
     states = get_subscriptions_for_user(user_id)
 
     if not states:
-        # No subscriptions — show all states
-        return get_recent_leads(state=None, days=days, limit=limit)
+        return get_recent_leads(state=None, days=days, limit=limit, query=query)
 
-    # Build parameterized query with ANY for state filter
-    query = """
+    search_clause = ""
+    args = [states, days, limit]
+    if query:
+        search_clause = "AND ("
+        for col in ["l.operator_name", "l.county", "l.formation", "l.api_number"]:
+            search_clause += f"OR {col} ILIKE %s "
+        search_clause += ")"
+        args += [f"%{query}%"] * 4
+
+    sql = f"""
         SELECT l.*, b.brief_text,
                array_agg(jsonb_build_object(
                    'name', p.name, 'tier', p.tier, 'rank', m.rank,
@@ -247,13 +255,14 @@ def get_dashboard_leads(user_id: int, days: int = 7, limit: int = 100) -> list[d
         LEFT JOIN briefs b ON b.lead_id = l.id
         WHERE l.state = ANY(%s)
           AND l.processed_at >= NOW() - INTERVAL '%s days'
+          {search_clause}
         GROUP BY l.id, b.brief_text
         ORDER BY l.processed_at DESC
         LIMIT %s
     """
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(query, (states, days, limit))
+            cur.execute(sql, args)
             rows = cur.fetchall()
     return [dict(r) for r in rows]
 
@@ -275,10 +284,17 @@ def get_lead(api_number: str, state: str) -> dict | None:
     return dict(row) if row else None
 
 
-def get_recent_leads(state: str | None = None, days: int = 7, limit: int = 100) -> list[dict]:
-    """Fetch recent leads, optionally filtered by state."""
+def get_recent_leads(state: str | None = None, days: int = 7, limit: int = 100, query: str = "") -> list[dict]:
+    """Fetch recent leads, optionally filtered by state. Supports free-text search."""
+    search_clause = ""
+    args_list = []
+    if query:
+        for col in ["l.operator_name", "l.county", "l.formation", "l.api_number"]:
+            search_clause += f"AND ({col} ILIKE %s) "
+        args_list += [f"%{query}%"] * 4
+
     if state:
-        query = """
+        base = f"""
             SELECT l.*, b.brief_text,
                    array_agg(jsonb_build_object(
                        'name', p.name, 'tier', p.tier, 'rank', m.rank,
@@ -290,13 +306,14 @@ def get_recent_leads(state: str | None = None, days: int = 7, limit: int = 100) 
             LEFT JOIN briefs b ON b.lead_id = l.id
             WHERE l.state = %s
               AND l.processed_at >= NOW() - INTERVAL '%s days'
+              {search_clause}
             GROUP BY l.id, b.brief_text
             ORDER BY l.processed_at DESC
             LIMIT %s
         """
-        args = (state, days, limit)
+        args = (state, days, *args_list, limit)
     else:
-        query = """
+        base = f"""
             SELECT l.*, b.brief_text,
                    array_agg(jsonb_build_object(
                        'name', p.name, 'tier', p.tier, 'rank', m.rank,
@@ -307,15 +324,16 @@ def get_recent_leads(state: str | None = None, days: int = 7, limit: int = 100) 
             LEFT JOIN prospects p ON p.id = m.prospect_id
             LEFT JOIN briefs b ON b.lead_id = l.id
             WHERE l.processed_at >= NOW() - INTERVAL '%s days'
+              {search_clause}
             GROUP BY l.id, b.brief_text
             ORDER BY l.processed_at DESC
             LIMIT %s
         """
-        args = (days, limit)
+        args = (days, *args_list, limit)
 
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(query, args)
+            cur.execute(base, args)
             rows = cur.fetchall()
     return [dict(r) for r in rows]
 
