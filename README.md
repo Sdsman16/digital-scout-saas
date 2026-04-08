@@ -70,7 +70,7 @@ python -m src.admin.app
 
 - [x] Phase 1: Prompt registry, lead store, matcher, Flask admin UI
 - [x] Phase 2: Slack dispatcher with retries + multi-state correlation runner
-- [ ] Phase 3: Web login + lead dashboard
+- [x] Phase 3: Web login + lead dashboard ← DONE
 - [ ] Phase 4: Stripe subscriptions
 - [ ] Phase 5: AWS migration (ECS Fargate, RDS)
 
