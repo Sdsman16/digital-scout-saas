@@ -126,6 +126,7 @@ def admin():
 @login_required
 def dashboard():
     active_state = request.args.get("state", "").strip().upper()
+    active_filter = request.args.get("filter", "").strip()
     query = request.args.get("q", "").strip()
     days = min(int(request.args.get("days", 7)), 30)
     limit = min(int(request.args.get("limit", 100)), 500)
@@ -136,9 +137,9 @@ def dashboard():
 
     if active_state:
         from src.lead_store import get_recent_leads
-        leads = get_recent_leads(state=active_state, days=days, limit=limit, query=query)
+        leads = get_recent_leads(state=active_state, days=days, limit=limit, query=query, filter=active_filter)
     else:
-        leads = get_dashboard_leads(current_user.id, days=days, limit=limit, query=query)
+        leads = get_dashboard_leads(current_user.id, days=days, limit=limit, query=query, filter=active_filter)
 
     # Annotate is_new (processed within last 8 hrs) and days_ago
     import datetime
@@ -167,6 +168,7 @@ def dashboard():
         leads=leads,
         available_states=available_states,
         active_state=active_state,
+        active_filter=active_filter,
         days=days,
         query=query,
         now=now_ts,

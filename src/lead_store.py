@@ -223,18 +223,19 @@ def get_subscriptions_for_user(user_id: int) -> list[str]:
             return [row[0] for row in cur.fetchall()]
 
 
-def get_dashboard_leads(user_id: int, days: int = 7, limit: int = 100, query: str = "") -> list[dict]:
+def get_dashboard_leads(user_id: int, days: int = 7, limit: int = 100, query: str = "", filter: str = "") -> list[dict]:
     """
     Fetch leads for a user's subscribed states.
     Falls back to all states if user has no subscriptions.
-    Supports free-text search across operator, county, formation, api_number.
+    Supports free-text search and attribute filter.
     """
     states = get_subscriptions_for_user(user_id)
 
     if not states:
-        return get_recent_leads(state=None, days=days, limit=limit, query=query)
+        return get_recent_leads(state=None, days=days, limit=limit, query=query, filter=filter)
 
     search_clause = ""
+    filter_clause = ""
     args = [states, days, limit]
     if query:
         search_clause = "AND ("
@@ -242,6 +243,9 @@ def get_dashboard_leads(user_id: int, days: int = 7, limit: int = 100, query: st
             search_clause += f"OR {col} ILIKE %s "
         search_clause += ")"
         args += [f"%{query}%"] * 4
+    if filter:
+        filter_clause, extra_args = _build_filter_clause(filter)
+        args += extra_args
 
     sql = f"""
         SELECT l.*, b.brief_text,
@@ -256,6 +260,7 @@ def get_dashboard_leads(user_id: int, days: int = 7, limit: int = 100, query: st
         WHERE l.state = ANY(%s)
           AND l.processed_at >= NOW() - INTERVAL '%s days'
           {search_clause}
+          {filter_clause}
         GROUP BY l.id, b.brief_text
         ORDER BY l.processed_at DESC
         LIMIT %s
@@ -284,14 +289,42 @@ def get_lead(api_number: str, state: str) -> dict | None:
     return dict(row) if row else None
 
 
-def get_recent_leads(state: str | None = None, days: int = 7, limit: int = 100, query: str = "") -> list[dict]:
-    """Fetch recent leads, optionally filtered by state. Supports free-text search."""
+def _build_filter_clause(filter: str) -> tuple[str, list]:
+    """
+    Build SQL WHERE clause for attribute filters.
+    Returns (clause, args). Empty clause = no filter.
+    """
+    clause = ""
+    args = []
+    if filter == "hp":
+        clause = "AND l.is_high_pressure = TRUE"
+    elif filter == "h2s":
+        clause = "AND l.has_h2s_risk = TRUE"
+    elif filter == "dir":
+        clause = "AND l.is_directional = TRUE"
+    elif filter == "pre":
+        clause = "AND l.is_pre_spud = TRUE"
+    elif filter == "deep":
+        clause = "AND l.total_depth_ft >= 10000"
+    elif filter == "tier1":
+        clause = "AND EXISTS (SELECT 1 FROM matches m2 JOIN prospects pr ON pr.id = m2.prospect_id WHERE m2.lead_id = l.id AND pr.tier = 1)"
+    elif filter == "tier2":
+        clause = "AND EXISTS (SELECT 1 FROM matches m2 JOIN prospects pr ON pr.id = m2.prospect_id WHERE m2.lead_id = l.id AND pr.tier = 2)"
+    return clause, args
+
+
+def get_recent_leads(state: str | None = None, days: int = 7, limit: int = 100, query: str = "", filter: str = "") -> list[dict]:
+    """Fetch recent leads, optionally filtered by state. Supports free-text search and attribute filter."""
     search_clause = ""
+    filter_clause = ""
     args_list = []
     if query:
         for col in ["l.operator_name", "l.county", "l.formation", "l.api_number"]:
             search_clause += f"AND ({col} ILIKE %s) "
         args_list += [f"%{query}%"] * 4
+    if filter:
+        filter_clause, extra = _build_filter_clause(filter)
+        args_list += extra
 
     if state:
         base = f"""
@@ -307,6 +340,7 @@ def get_recent_leads(state: str | None = None, days: int = 7, limit: int = 100, 
             WHERE l.state = %s
               AND l.processed_at >= NOW() - INTERVAL '%s days'
               {search_clause}
+              {filter_clause}
             GROUP BY l.id, b.brief_text
             ORDER BY l.processed_at DESC
             LIMIT %s
@@ -325,6 +359,7 @@ def get_recent_leads(state: str | None = None, days: int = 7, limit: int = 100, 
             LEFT JOIN briefs b ON b.lead_id = l.id
             WHERE l.processed_at >= NOW() - INTERVAL '%s days'
               {search_clause}
+              {filter_clause}
             GROUP BY l.id, b.brief_text
             ORDER BY l.processed_at DESC
             LIMIT %s
