@@ -13,13 +13,16 @@ State ArcGIS APIs  ──►  Pipeline Workers  ──►  Postgres  ──►  
                          (existing bots)         (this repo)     (Phase 2)
 ```
 
-## What's built (Phase 1)
+## What's built
 
-- `migrations/001_initial.sql` — full Postgres schema
-- `src/prompt_registry.py` — versioned prompt template store + CRUD
-- `src/lead_store.py` — write/read processed leads to Postgres
-- `src/matcher.py` — stateless lead-to-prospect matching
-- `src/admin/app.py` — Flask admin UI for prompt management
+- `migrations/001_initial.sql` — full Postgres schema (users, subscriptions, leads, matches, briefs, deliveries)
+- `src/prompt_registry.py` — versioned prompt template store + CRUD + seed defaults
+- `src/lead_store.py` — write/read processed leads to Postgres (bridges state bots)
+- `src/matcher.py` — stateless lead-to-prospect matching across all states
+- `src/correlator.py` — group leads by normalized operator name + week into correlated alerts
+- `src/slack_dispatcher.py` — Block Kit message builder + exponential backoff retry + dedup
+- `src/run_correlation.py` — correlation cron runner (fires at 3 PM after all state bots)
+- `src/admin/app.py` — Flask admin UI for prompts and prospects at `localhost:5001`
 
 ## Setup
 
@@ -65,8 +68,8 @@ python -m src.admin.app
 
 ## Build Phases
 
-- [x] Phase 1: Prompt registry, lead store, matcher
-- [ ] Phase 2: Slack dispatcher with retries + multi-state correlation
+- [x] Phase 1: Prompt registry, lead store, matcher, Flask admin UI
+- [x] Phase 2: Slack dispatcher with retries + multi-state correlation runner
 - [ ] Phase 3: Web login + lead dashboard
 - [ ] Phase 4: Stripe subscriptions
 - [ ] Phase 5: AWS migration (ECS Fargate, RDS)
