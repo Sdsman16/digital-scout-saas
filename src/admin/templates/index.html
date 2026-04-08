@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Digital Scout — Prompt Admin</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, system-ui, sans-serif; background: #0d1117; color: #e6edf3; padding: 2rem; }
+    h1 { color: #58a6ff; margin-bottom: 1.5rem; }
+    h2 { color: #8b949e; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.1em; margin: 2rem 0 1rem; border-bottom: 1px solid #21262d; padding-bottom: 0.5rem; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; }
+    .card h3 { color: #e6edf3; margin-bottom: 0.5rem; }
+    .tag { display: inline-block; background: #1f6feb22; border: 1px solid #1f6feb; color: #58a6ff; border-radius: 4px; padding: 2px 8px; font-size: 0.75rem; margin-right: 4px; }
+    .tag.active { background: #23863622; border-color: #238636; color: #3fb950; }
+    .tag.tier-1 { background: #f0b42922; border-color: #f0b429; color: #f0b429; }
+    .tag.tier-2 { background: #6e768122; border-color: #6e7681; color: #8b949e; }
+    .tag.tier-3 { background: #da363322; border-color: #da3633; color: #f85149; }
+    pre { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 1rem; font-size: 0.8rem; overflow-x: auto; color: #79c0ff; white-space: pre-wrap; }
+    button { background: #238636; color: #fff; border: none; border-radius: 6px; padding: 6px 16px; cursor: pointer; font-size: 0.85rem; }
+    button:hover { background: #2ea043; }
+    .btn-edit { background: #1f6feb; }
+    .btn-edit:hover { background: #388bfd; }
+    .btn-sm { padding: 4px 10px; font-size: 0.75rem; }
+    textarea { width: 100%; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #79c0ff; padding: 0.75rem; font-family: monospace; font-size: 0.85rem; resize: vertical; min-height: 200px; }
+    input, select { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #e6edf3; padding: 6px 12px; font-size: 0.85rem; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .form-group { display: flex; flex-direction: column; gap: 4px; margin-bottom: 1rem; }
+    label { font-size: 0.75rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; }
+    #edit-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); padding: 2rem; overflow-y: auto; z-index: 100; }
+    #edit-modal .card { max-width: 800px; margin: 2rem auto; }
+    .close { float: right; color: #8b949e; cursor: pointer; font-size: 1.5rem; }
+    .close:hover { color: #e6edf3; }
+    .prospect-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
+  </style>
+</head>
+<body>
+
+<h1>🌟 Digital Scout Admin</h1>
+
+<h2>Prompt Templates</h2>
+<div id="prompts-list">Loading...</div>
+
+<h2>Suppliers</h2>
+<div id="prospects-list">Loading...</div>
+
+<!-- Edit Modal -->
+<div id="edit-modal">
+  <div class="card">
+    <span class="close" onclick="closeModal()">&times;</span>
+    <h3 id="modal-title">Edit Prompt</h3>
+    <input type="hidden" id="edit-id">
+    <div class="grid-2">
+      <div class="form-group">
+        <label>State</label>
+        <select id="edit-state">
+          <option value="TX">Texas</option>
+          <option value="NM">New Mexico</option>
+          <option value="OK">Oklahoma</option>
+          <option value="WY">Wyoming</option>
+          <option value="ND">North Dakota</option>
+          <option value="LA">Louisiana</option>
+          <option value="ALL">All States</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Template Type</label>
+        <select id="edit-type">
+          <option value="brief">Brief</option>
+          <option value="alert">Alert</option>
+          <option value="summary">Summary</option>
+          <option value="correlated">Correlated</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Description</label>
+      <input type="text" id="edit-desc" placeholder="Optional description..." style="width:100%">
+    </div>
+    <div class="form-group">
+      <label>System Prompt</label>
+      <textarea id="edit-system" rows="5"></textarea>
+    </div>
+    <div class="form-group">
+      <label>User Template</label>
+      <textarea id="edit-user" rows="10"></textarea>
+    </div>
+    <button onclick="savePrompt()">Save Prompt</button>
+  </div>
+</div>
+
+<script>
+const API = '/api';
+
+async function loadPrompts() {
+  const res = await fetch(`${API}/prompts`);
+  const data = await res.json();
+  const el = document.getElementById('prompts-list');
+  if (!data.length) { el.innerHTML = '<div class="card"><p>No prompts found. Run seed.</p></div>'; return; }
+
+  // Group by state + type
+  const byKey = {};
+  data.forEach(p => {
+    const k = `${p.state}:${p.template_type}`;
+    if (!byKey[k] || p.version > byKey[k].version) byKey[k] = p;
+  });
+
+  let html = '';
+  Object.values(byKey).sort((a,b) => a.state.localeCompare(b.state)).forEach(p => {
+    html += `<div class="card">
+      <h3>${p.state} — ${p.template_type} <span class="tag ${p.is_active ? 'active' : ''}">${p.is_active ? 'ACTIVE' : 'v'+p.version}</span></h3>
+      <p style="color:#8b949e;font-size:0.85rem;margin:0.5rem 0">${p.description || 'No description'}</p>
+      <button class="btn-edit btn-sm" onclick="loadPrompt(${p.id})">Edit</button>
+    </div>`;
+  });
+  el.innerHTML = html;
+}
+
+async function loadProspects() {
+  const res = await fetch(`${API}/prospects`);
+  const data = await res.json();
+  const el = document.getElementById('prospects-list');
+  if (!data.length) { el.innerHTML = '<div class="card"><p>No prospects. Run seed.</p></div>'; return; }
+  el.innerHTML = `<div class="prospect-grid">` + data.map(p => `
+    <div class="card">
+      <h3>${p.name}</h3>
+      <p style="margin:0.5rem 0">
+        <span class="tag tier-${p.tier}">Tier ${p.tier}</span>
+        ${(p.formations||[]).slice(0,3).map(f => `<span class="tag">${f}</span>`).join('')}
+      </p>
+      <p style="color:#8b949e;font-size:0.8rem">${(p.counties||[]).slice(0,4).join(', ')}</p>
+    </div>`).join('') + `</div>`;
+}
+
+async function loadPrompt(id) {
+  const res = await fetch(`${API}/prompts/${id}`);
+  const p = await res.json();
+  document.getElementById('edit-id').value = p.id;
+  document.getElementById('edit-state').value = p.state;
+  document.getElementById('edit-type').value = p.template_type;
+  document.getElementById('edit-desc').value = p.description || '';
+  document.getElementById('edit-system').value = p.system_prompt || '';
+  document.getElementById('edit-user').value = p.user_template || '';
+  document.getElementById('edit-modal').style.display = 'block';
+}
+
+function closeModal() { document.getElementById('edit-modal').style.display = 'none'; }
+
+async function savePrompt() {
+  const id = document.getElementById('edit-id').value;
+  const body = {
+    state: document.getElementById('edit-state').value,
+    template_type: document.getElementById('edit-type').value,
+    description: document.getElementById('edit-desc').value,
+    system_prompt: document.getElementById('edit-system').value,
+    user_template: document.getElementById('edit-user').value,
+  };
+  const res = await fetch(`${API}/prompts`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+  if (res.ok) { closeModal(); loadPrompts(); }
+}
+
+loadPrompts();
+loadProspects();
+</script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+# Byte-compiled / optimized
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Local config (contains real webhook URLs)
+config.yaml
+.env
+
+# Data and logs
+data/
+logs/
+*.log
+
+# Processed API tracking (local state)
+processed_apis.json
+processed_apis.json.bak
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Credentials
+*.pem
+*.key
+credentials.json
+
+# AWS
+*.aws/
+credentials

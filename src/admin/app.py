@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""
+admin/app.py — Simple prompt management admin UI.
+
+Flask app to view/edit prompt templates in the database.
+Run: python -m src.admin.app
+"""
+
+import os
+
+import psycopg2
+from flask import Flask, jsonify, request, render_template
+
+from src.prompt_registry import (
+    get_all_prompts,
+    get_active_prompt,
+    upsert_prompt,
+    seed_defaults,
+    get_connection,
+)
+
+
+app = Flask(__name__)
+
+
+def get_db_url():
+    return os.environ.get("DATABASE_URL", "postgresql://localhost:5432/digital_scout")
+
+
+@app.route("/")
+def index():
+    prompts = get_all_prompts()
+    return render_template("index.html", prompts=prompts)
+
+
+@app.route("/api/prompts", methods=["GET"])
+def api_list_prompts():
+    state = request.args.get("state")
+    prompts = get_all_prompts(state=state)
+    return jsonify([
+        {
+            "id": p.id,
+            "state": p.state,
+            "template_type": p.template_type,
+            "version": p.version,
+            "description": p.description,
+            "is_active": p.is_active,
+        }
+        for p in prompts
+    ])
+
+
+@app.route("/api/prompts/<int:prompt_id>", methods=["GET"])
+def api_get_prompt(prompt_id):
+    query = """
+        SELECT id, state, template_type, version, system_prompt,
+               user_template, description, is_active, created_at
+        FROM prompt_templates WHERE id = %s
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (prompt_id,))
+            row = cur.fetchone()
+    if not row:
+        return jsonify({"error": "not found"}), 404
+    return jsonify({
+        "id": row[0], "state": row[1], "template_type": row[2],
+        "version": row[3], "system_prompt": row[4], "user_template": row[5],
+        "description": row[6], "is_active": row[7],
+    })
+
+
+@app.route("/api/prompts", methods=["POST"])
+def api_save_prompt():
+    data = request.json
+    p = upsert_prompt(
+        state=data["state"],
+        template_type=data["template_type"],
+        system_prompt=data["system_prompt"],
+        user_template=data["user_template"],
+        description=data.get("description"),
+    )
+    return jsonify({
+        "id": p.id, "state": p.state, "template_type": p.template_type,
+        "version": p.version, "is_active": p.is_active,
+    })
+
+
+@app.route("/api/prospects", methods=["GET"])
+def api_list_prospects():
+    query = """
+        SELECT id, name, products, counties, formations, website, tier, is_active
+        FROM prospects WHERE is_active = TRUE ORDER BY tier, name
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query)
+            rows = cur.fetchall()
+    return jsonify([
+        {
+            "id": r[0], "name": r[1], "products": r[2],
+            "counties": r[3], "formations": r[4],
+            "website": r[5], "tier": r[6], "is_active": r[7],
+        }
+        for r in rows
+    ])
+
+
+@app.route("/api/prospects", methods=["POST"])
+def api_save_prospect():
+    data = request.json
+    query = """
+        INSERT INTO prospects (name, products, counties, formations, website, tier)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT DO NOTHING
+        RETURNING id
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (
+                data["name"], data["products"], data["counties"],
+                data["formations"], data.get("website"), data.get("tier", 2),
+            ))
+            conn.commit()
+    return jsonify({"ok": True})
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5001, debug=True)
