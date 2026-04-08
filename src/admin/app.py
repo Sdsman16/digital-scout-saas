@@ -162,7 +162,7 @@ def dashboard():
             diff = (now_ts - processed).total_seconds()
             lead["is_new"] = diff < 28800
             lead["days_ago"] = int(diff // 86400)
-        lead["tool_tags"] = _compute_tool_tags(lead)
+        # tool_tags come from the DB (tool_tags column — persisted at write time)
 
     return render_template(
         "dashboard.html",

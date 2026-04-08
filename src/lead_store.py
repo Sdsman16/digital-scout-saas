@@ -22,7 +22,45 @@ def get_connection():
     return psycopg2.connect(get_db_url())
 
 
-# ── Write ──────────────────────────────────────────────────────────────────────
+def compute_tool_tags(lead: dict) -> list[str]:
+    """
+    Rules-based inference of required drilling tools from well attributes.
+    Call this before storing a lead so tool_tags is persisted to the DB.
+    """
+    tags = []
+    td = lead.get("total_depth_ft") or 0
+    is_hp = lead.get("is_high_pressure")
+    has_h2s = lead.get("has_h2s_risk")
+    is_dir = lead.get("is_directional")
+    is_pre = lead.get("is_pre_spud")
+
+    if td >= 8000 or is_hp or is_pre:
+        tags.append("Casing")
+    if td >= 5000:
+        tags.append("PDC Bit")
+    if td >= 10000:
+        tags.append("Tricone Bit")
+        tags.append("Mud Motor")
+    if td >= 5000:
+        tags.append("Drill Mud")
+    if is_hp or has_h2s:
+        tags.append("H₂S Scrub Mud")
+        tags.append("BOP")
+        tags.append("Kill Fluid")
+    if is_pre:
+        tags.append("Cementing")
+    if is_dir:
+        tags.append("MWD")
+    if td >= 7000:
+        tags.append("Fishing")
+    if is_hp and is_pre:
+        tags.append("Snubbing Unit")
+    if td >= 10000:
+        tags.append("Torque/Drag Analysis")
+    if is_dir and td >= 8000:
+        tags.append("Rotary Steerable")
+
+    return tags
 
 def store_lead(lead_data: dict) -> int:
     """
@@ -35,14 +73,14 @@ def store_lead(lead_data: dict) -> int:
             api_number, state, operator_name, well_name, county,
             well_type, status, latitude, longitude, total_depth_ft,
             formation, spud_date, is_high_pressure, has_h2s_risk,
-            is_directional, is_pre_spud, raw_data, processed_at
+            is_directional, is_pre_spud, raw_data, processed_at, tool_tags
         ) VALUES (
             %(api_number)s, %(state)s, %(operator_name)s, %(well_name)s,
             %(county)s, %(well_type)s, %(status)s,
             %(latitude)s, %(longitude)s, %(total_depth_ft)s,
             %(formation)s, %(spud_date)s, %(is_high_pressure)s,
             %(has_h2s_risk)s, %(is_directional)s, %(is_pre_spud)s,
-            %(raw_data)s, NOW()
+            %(raw_data)s, NOW(), %(tool_tags)s
         )
         ON CONFLICT (api_number, state) DO UPDATE SET
             operator_name   = EXCLUDED.operator_name,
@@ -60,11 +98,13 @@ def store_lead(lead_data: dict) -> int:
             is_directional     = EXCLUDED.is_directional,
             is_pre_spud       = EXCLUDED.is_pre_spud,
             raw_data          = EXCLUDED.raw_data,
-            processed_at       = NOW()
+            processed_at       = NOW(),
+            tool_tags         = EXCLUDED.tool_tags
         RETURNING id
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
+            tool_tags = compute_tool_tags(lead_data)
             cur.execute(query, {
                 "api_number":      lead_data.get("api_number", ""),
                 "state":           lead_data.get("state", ""),
@@ -83,6 +123,7 @@ def store_lead(lead_data: dict) -> int:
                 "is_directional":     lead_data.get("is_directional", False),
                 "is_pre_spud":       lead_data.get("is_pre_spud", False),
                 "raw_data":        Json(lead_data.get("raw_data", {})),
+                "tool_tags":       Json(tool_tags),
             })
             lead_id = cur.fetchone()[0]
             conn.commit()
@@ -101,14 +142,14 @@ def store_leads_batch(leads: list[dict]) -> int:
             api_number, state, operator_name, well_name, county,
             well_type, status, latitude, longitude, total_depth_ft,
             formation, spud_date, is_high_pressure, has_h2s_risk,
-            is_directional, is_pre_spud, raw_data, processed_at
+            is_directional, is_pre_spud, raw_data, processed_at, tool_tags
         ) VALUES (
             %(api_number)s, %(state)s, %(operator_name)s, %(well_name)s,
             %(county)s, %(well_type)s, %(status)s,
             %(latitude)s, %(longitude)s, %(total_depth_ft)s,
             %(formation)s, %(spud_date)s, %(is_high_pressure)s,
             %(has_h2s_risk)s, %(is_directional)s, %(is_pre_spud)s,
-            %(raw_data)s, NOW()
+            %(raw_data)s, NOW(), %(tool_tags)s
         )
         ON CONFLICT (api_number, state) DO UPDATE SET
             operator_name   = EXCLUDED.operator_name,
@@ -126,7 +167,8 @@ def store_leads_batch(leads: list[dict]) -> int:
             is_directional     = EXCLUDED.is_directional,
             is_pre_spud       = EXCLUDED.is_pre_spud,
             raw_data          = EXCLUDED.raw_data,
-            processed_at       = NOW()
+            processed_at       = NOW(),
+            tool_tags         = EXCLUDED.tool_tags
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -149,6 +191,7 @@ def store_leads_batch(leads: list[dict]) -> int:
                     "is_directional":     lead.get("is_directional", False),
                     "is_pre_spud":       lead.get("is_pre_spud", False),
                     "raw_data":        Json(lead.get("raw_data", {})),
+                    "tool_tags":       Json(compute_tool_tags(lead)),
                 })
             conn.commit()
     return len(leads)
@@ -300,14 +343,6 @@ def _build_filter_clause(filter: str) -> tuple[str, list]:
         clause = "AND l.is_high_pressure = TRUE"
     elif filter == "h2s":
         clause = "AND l.has_h2s_risk = TRUE"
-    elif filter == "sour":
-        clause = "AND l.has_h2s_risk = TRUE"
-    elif filter == "co2":
-        clause = "AND l.has_h2s_risk = TRUE"
-    elif filter == "hvyt":
-        clause = "AND l.has_h2s_risk = TRUE"
-    elif filter == "snub":
-        clause = "AND l.has_h2s_risk = TRUE"
     elif filter == "dir":
         clause = "AND l.is_directional = TRUE"
     elif filter == "pre":
@@ -322,22 +357,13 @@ def _build_filter_clause(filter: str) -> tuple[str, list]:
         clause = "AND l.total_depth_ft < 3000"
     elif filter == "ultradeep":
         clause = "AND l.total_depth_ft >= 15000"
-    elif filter == "casing":
-        clause = "AND l.is_high_pressure = TRUE"
-    elif filter == "cement":
-        clause = "AND l.is_pre_spud = TRUE"
-    elif filter == "bit":
-        clause = "AND l.total_depth_ft >= 5000"
-    elif filter == "mud":
-        clause = "AND l.total_depth_ft >= 3000"
-    elif filter == "mwd":
-        clause = "AND l.is_directional = TRUE"
-    elif filter == "fishing":
-        clause = "AND l.total_depth_ft >= 5000"
-    elif filter == "wcf":
-        clause = "AND l.is_high_pressure = TRUE OR l.has_h2s_risk = TRUE"
-    elif filter == "coiled":
-        clause = "AND l.is_pre_spud = TRUE"
+    elif filter in ("casing", "cement", "bit", "mud", "mwd", "fishing", "wcf", "coiled", "bop"):
+        clause = "AND l.tool_tags @> %s"
+        args = [f'["{filter}"]']
+    elif filter == "torque":
+        clause = "AND l.total_depth_ft >= 10000"
+    elif filter == "rotary":
+        clause = "AND l.is_directional = TRUE AND l.total_depth_ft >= 8000"
     elif filter == "tier1":
         clause = "AND EXISTS (SELECT 1 FROM matches m2 JOIN prospects pr ON pr.id = m2.prospect_id WHERE m2.lead_id = l.id AND pr.tier = 1)"
     elif filter == "tier2":
