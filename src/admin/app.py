@@ -112,6 +112,12 @@ def logout():
 @app.route("/")
 @login_required
 def index():
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/admin")
+@login_required
+def admin():
     prompts = get_all_prompts()
     return render_template("index.html", prompts=prompts)
 
